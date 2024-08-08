@@ -2,10 +2,12 @@ import numpy as np
 import time
 import logging
 import threading
-from mss import mss
-from PIL import Image, ImageGrab
+import os
 import cv2
 import pyautogui
+from mss import mss
+from PIL import Image, ImageGrab
+from datetime import datetime
 
 class HPMonitor:
     def __init__(self, config_manager, key_presser, scaling_factor):
@@ -41,27 +43,66 @@ class HPMonitor:
 
     def detect_hp_bar(self, screenshot):
         hsv = cv2.cvtColor(screenshot, cv2.COLOR_BGR2HSV)
-        
         lower_blue = np.array([100, 30, 100])
         upper_blue = np.array([140, 255, 255])
-        
         blue_mask = cv2.inRange(hsv, lower_blue, upper_blue)
-        
         lower_black = np.array([0, 0, 0])
         upper_black = np.array([180, 255, 15])
-        
         black_mask = cv2.inRange(hsv, lower_black, upper_black)
-        
+
+        # Combined mask for blue and black
         combined_mask = cv2.bitwise_or(blue_mask, black_mask)
-        
+
         contours, _ = cv2.findContours(combined_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        
-        if contours:
-            largest_contour = max(contours, key=cv2.contourArea)
+        valid_contours = []
+
+        for contour in contours:
+            x, y, w, h = cv2.boundingRect(contour)
+            if 55 <= w <= 80 and 4 <= h <= 10:
+                valid_contours.append(contour)
+
+        if not valid_contours:
+            # If no valid blue-black contours, check yellow-black
+            lower_yellow = np.array([10, 65, 15])
+            upper_yellow = np.array([50, 185, 185])
+            yellow_mask = cv2.inRange(hsv, lower_yellow, upper_yellow)
+            combined_mask = cv2.bitwise_or(yellow_mask, black_mask)
+
+            contours, _ = cv2.findContours(combined_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            for contour in contours:
+                x, y, w, h = cv2.boundingRect(contour)
+                if 55 <= w <= 80 and 4 <= h <= 10:
+                    valid_contours.append(contour)
+                    logging.info("Found yellow contour.")
+
+        if valid_contours:
+            largest_contour = max(valid_contours, key=cv2.contourArea)
             x, y, w, h = cv2.boundingRect(largest_contour)
+
+            # Create a copy of the screenshot for visualization
+            debug_image = screenshot.copy()
+            cv2.rectangle(debug_image, (x, y), (x + w, y + h), (0, 255, 0), 2)
+            debug_image_rgb = cv2.cvtColor(debug_image, cv2.COLOR_BGR2RGB)
+
+            # Save the debug image
+            self.save_debug_image(debug_image_rgb)
+
             return x, y, w, h
         else:
+            logging.warning("No HP bar detected in the screenshot.")
+            self.save_debug_image(screenshot)
             return None
+
+    def save_debug_image(self, image):
+        if not os.path.exists('hpbar_debug'):
+            os.makedirs('hpbar_debug')
+        
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"hpbar_debug/debug_{timestamp}.png"
+        
+        # Save using PIL to ensure correct color representation
+        Image.fromarray(image).save(filename)
+        logging.info(f"Debug image saved: {filename}")
 
     def get_hp_percentage(self):
         if not self.screenshot_area:
@@ -90,39 +131,44 @@ class HPMonitor:
                         return None
                     time.sleep(0.1)
                     continue
-        try:
-            hp_bar = self.detect_hp_bar(screenshot)
-            if hp_bar is None:
-                logging.warning("HP bar not detected in the screenshot.")
-                return None
 
-            x, y, w, h = hp_bar
-            hp_bar_img = screenshot[y:y+h, x:x+w]
+            try:
+                hp_bar = self.detect_hp_bar(screenshot)
+                if hp_bar is None:
+                    logging.warning("HP bar not detected in the screenshot.")
+                    return None
 
-            middle_line = h // 2
-            hp_line = hp_bar_img[middle_line:middle_line+1, :]
+                x, y, w, h = hp_bar
+                hp_bar_img = screenshot[y:y+h, x:x+w]
+                middle_line = h // 2
+                hp_line = hp_bar_img[middle_line:middle_line+1, :]
 
-            hsv = cv2.cvtColor(hp_line, cv2.COLOR_BGR2HSV)
+                hsv = cv2.cvtColor(hp_line, cv2.COLOR_BGR2HSV)
 
-            lower_blue = np.array([85, 110, 35])
-            upper_blue = np.array([140, 255, 255])
-            mask = cv2.inRange(hsv, lower_blue, upper_blue)
+                # Blue mask
+                lower_blue = np.array([100, 30, 100])
+                upper_blue = np.array([140, 255, 255])
+                mask = cv2.inRange(hsv, lower_blue, upper_blue)
+                blue_pixels = cv2.countNonZero(mask)
 
-            blue_pixels = cv2.countNonZero(mask)
-            total_pixels = w - 2
+                if blue_pixels == 0:
+                    # If no blue pixels, check yellow
+                    lower_yellow = np.array([10, 65, 15])
+                    upper_yellow = np.array([50, 185, 185])
+                    mask = cv2.inRange(hsv, lower_yellow, upper_yellow)
+                    yellow_pixels = cv2.countNonZero(mask)
+                    hp_percentage = (yellow_pixels / (w - 2)) * 100
+                else:
+                    hp_percentage = (blue_pixels / (w - 2)) * 100
 
-            hp_percentage = (blue_pixels / total_pixels) * 100
-            print(blue_pixels)
-            print(total_pixels)
+                logging.info(f"Calculated HP percentage: {hp_percentage:.2f}%")
+                return hp_percentage
 
-            logging.info(f"Calculated HP percentage: {hp_percentage:.2f}%")
-            return hp_percentage
-
-        except Exception as e:
-            logging.error(f"Error processing HP percentage (attempt {attempt + 1}): {e}")
-            if attempt == max_retries - 1:
-                return None
-            time.sleep(0.1)
+            except Exception as e:
+                logging.error(f"Error processing HP percentage (attempt {attempt + 1}): {e}")
+                if attempt == max_retries - 1:
+                    return None
+                time.sleep(0.1)
 
     def __del__(self):
         if hasattr(self, 'sct'):

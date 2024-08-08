@@ -3,3 +3,7 @@
 /ZXOneButton.pyproj
 /ZXOneButton.spec
 /__pycache__
+config.json
+/build
+/dist
+/hpbar_debug
