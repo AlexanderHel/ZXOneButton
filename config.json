@@ -1,0 +1,18 @@
+{
+    "left_click_var": true,
+    "left_click_freq": 0.01,
+    "right_click_var": false,
+    "right_click_freq": 0.01,
+    "key_to_press_0": "3",
+    "key_to_press_1": "4",
+    "key_to_press_2": "",
+    "key_to_press_3": "",
+    "frequency_0": 0.1,
+    "frequency_1": 0.15,
+    "frequency_2": 0.01,
+    "frequency_3": 0.01,
+    "hp_key": "5",
+    "hp_level": 85,
+    "monitor_hp": true,
+    "monitor_diablo_window": true
+}
