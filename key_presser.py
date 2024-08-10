@@ -18,6 +18,7 @@ class KeyPresser:
         self.manual_keys_pressed = set()
         self.key_press_queue = deque()
         self.key_press_thread = None
+        self.shift_thread = None
 
     def start_pressing(self):
         self.should_press.set()
@@ -25,6 +26,7 @@ class KeyPresser:
         logging.debug(f"Right click var: {self.config_manager.get('right_click_var')}")
         logging.debug(f"Left click freq: {self.config_manager.get('left_click_freq')}")
         logging.debug(f"Right click freq: {self.config_manager.get('right_click_freq')}")
+        logging.debug(f"Hold shift key: {self.config_manager.get('hold_shift_key')}")
 
         self.key_press_thread = threading.Thread(target=self.process_key_press_queue)
         self.key_press_thread.start()
@@ -49,6 +51,11 @@ class KeyPresser:
         self.manual_key_thread.start()
         self.threads.append(self.manual_key_thread)
 
+        if self.config_manager.get('hold_shift_key'):
+            self.shift_thread = threading.Thread(target=self.hold_shift_key)
+            self.shift_thread.start()
+            self.threads.append(self.shift_thread)
+
     def stop_pressing(self):
         self.should_press.clear()
         logging.info("Stopping all key pressing operations.")
@@ -56,6 +63,8 @@ class KeyPresser:
             thread.join()
         self.threads.clear()
         self.key_press_queue.clear()
+        # Always release the Shift key when stopping, regardless of the hold_shift_key setting
+        self.keyboard_controller.release(Key.shift)
 
     def schedule_key_press(self, index):
         while self.should_press.is_set():
@@ -151,3 +160,13 @@ class KeyPresser:
 
         # Add a cooldown period after the key press
         time.sleep(0.5)
+
+    def hold_shift_key(self):
+        while self.should_press.is_set():
+            if self.config_manager.get('hold_shift_key'):
+                self.keyboard_controller.press(Key.shift)
+                while self.should_press.is_set() and self.config_manager.get('hold_shift_key'):
+                    time.sleep(0.1)
+                self.keyboard_controller.release(Key.shift)
+            else:
+                time.sleep(0.1)

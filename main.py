@@ -93,6 +93,6 @@ if __name__ == "__main__":
     except Exception as e:
         logging.error(f"Unhandled exception: {e}")
         logging.error(traceback.format_exc())
-    
-    # Keep the console window open to view logs
-    input("Press Enter to exit...")
+    finally:
+        logging.info("Application has finished. Exiting.")
+        sys.exit(0)

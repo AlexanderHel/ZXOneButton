@@ -173,6 +173,18 @@ class GUI:
                     self.freq_input_ids.append(right_click_freq)
                     with dpg.tooltip(parent=self.right_click_checkbox):
                         dpg.add_text("Enable/disable right click auto-pressing")
+
+                    dpg.add_spacer(height=2)
+                    dpg.add_separator()
+                    dpg.add_spacer(height=2)
+
+                    self.hold_shift_checkbox = dpg.add_checkbox(
+                        label="Hold Shift",
+                        default_value=bool(self.config_manager.get('hold_shift_key')),
+                        callback=lambda sender, app_data, user_data: self.update_hold_shift_var(sender, app_data, user_data, unused=None)
+                    )
+                    with dpg.tooltip(parent=self.hold_shift_checkbox):
+                        dpg.add_text("Enable/disable holding the Shift key")
         except Exception as e:
             logging.error(f"Error in create_click_settings: {str(e)}")
             logging.error(traceback.format_exc())
@@ -418,6 +430,9 @@ class GUI:
     def update_right_click_freq(self, sender, app_data, user_data, unused):
         self.config_manager.set('right_click_freq', app_data / 1000)
 
+    def update_hold_shift_var(self, sender, app_data, user_data, unused):
+        self.config_manager.set('hold_shift_key', dpg.get_value(self.hold_shift_checkbox))
+
     def update_key_to_press(self, sender, app_data, user_data, unused):
         self.config_manager.set(f'key_to_press_{user_data}', app_data)
 
@@ -567,6 +582,7 @@ class GUI:
         # Update left and right click frequencies
         dpg.set_value(self.freq_input_ids[0], int(self.config_manager.get('left_click_freq') * 1000))
         dpg.set_value(self.freq_input_ids[1], int(self.config_manager.get('right_click_freq') * 1000))
+        dpg.set_value(self.hold_shift_checkbox, self.config_manager.get('hold_shift_key'))
         
         for i in range(4):
             dpg.set_value(self.key_input_ids[i], self.config_manager.get(f'key_to_press_{i}'))
