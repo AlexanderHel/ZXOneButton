@@ -1,2 +1,9 @@
 dearpygui
 pywinstyles
+numpy
+opencv-python
+pyautogui
+mss
+Pillow
+pynput
+pywin32
