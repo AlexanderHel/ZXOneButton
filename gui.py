@@ -337,7 +337,6 @@ class GUI:
             dpg.add_text("Keyboard Shortcuts:", color=(255, 255, 255))
             dpg.bind_item_font(dpg.last_item(), self.header_font)
             dpg.add_text("F3: Start/Stop tool")
-            dpg.add_text("F6: Pause/Unpause tool")
             dpg.add_separator()
             dpg.add_spacer(height=2)
 
@@ -346,7 +345,7 @@ class GUI:
 
             # Define the popup window
             with dpg.popup(dpg.last_item(), modal=True, tag='about_popup'):
-                dpg.add_text("Version 2.0")
+                dpg.add_text("Version 2.2")
                 dpg.add_text("Prompter: TruongTieuPham")
                 dpg.add_text("Code and Debug by Claude.ai and Perplexity.ai")
 
@@ -391,12 +390,6 @@ class GUI:
         try:
             if key == keyboard.Key.f3:
                 self.toggle_tool()
-            elif key == keyboard.Key.f6:
-                is_paused = self.toggle_pause()
-                if is_paused:
-                    logging.info("Tool paused manually.")
-                else:
-                    logging.info("Tool unpaused manually.")
         except AttributeError:
             pass
 
@@ -412,24 +405,6 @@ class GUI:
                 self.hp_monitor.start_monitoring()
             self.update_status_label("Tool Status: Tool Started", "tool_status")
             self.update_status_label("HP Monitoring Status: Started", "hp_monitoring_status")
-            
-    def toggle_pause(self, pause_state=None):
-        if pause_state is None:
-            is_paused = self.key_presser.toggle_pause()
-        else:
-            is_paused = pause_state
-            self.key_presser.set_pause(pause_state)
-
-        if is_paused:
-            self.update_status_label("Tool Status: Tool Paused", "tool_status")
-            self.update_status_label("HP Monitoring Status: Paused", "hp_monitoring_status")
-            self.hp_monitor.set_pause(True)
-        else:
-            self.update_status_label("Tool Status: Tool Started", "tool_status")
-            self.update_status_label("HP Monitoring Status: Started", "hp_monitoring_status")
-            self.hp_monitor.set_pause(False)
-
-        return is_paused
 
     def update_left_click_var(self, sender, app_data, user_data, unused):
         self.config_manager.set('left_click_var', dpg.get_value(self.left_click_checkbox))
@@ -473,11 +448,11 @@ class GUI:
         red_color = [255, 0, 0]
         green_color = [0, 255, 0]
 
-        if any(word in text for word in ["Idle", "Paused", "Tool Auto Paused"]):
+        if any(word in text for word in ["Idle"]):
             color = orange_color
         elif any(word in text for word in ["Not Active", "Stopped", "Disabled", "Tool Stopped", "Monitoring Disabled"]):
             color = red_color
-        elif any(word in text for word in ["Active", "Started", "Completed", "Running", "Resumed", "Tool Running", "Tool Resumed", "Tool Started", "Tool Unpaused"]):
+        elif any(word in text for word in ["Active", "Started", "Completed", "Running", "Resumed", "Tool Running", "Tool Resumed", "Tool Started"]):
             color = green_color
         else:
             color = [255, 255, 255]
@@ -509,22 +484,19 @@ class GUI:
         active_window = win32gui.GetWindowText(win32gui.GetForegroundWindow())
         if "Diablo IV" in active_window:
             if self.key_presser.should_press.is_set():
-                if self.key_presser.is_paused.is_set():
-                    status = "Diablo IV Window Status: Active - Tool Paused"
-                else:
-                    status = "Diablo IV Window Status: Active - Tool Running"
+                status = "Diablo IV Window Status: Active - Tool Running"
             else:
                 status = "Diablo IV Window Status: Active - Tool Stopped"
         else:
             if self.key_presser.should_press.is_set():
-                status = "Diablo IV Window Status: Not Active - Tool Auto Paused"
-                self.toggle_pause(True)
+                status = "Diablo IV Window Status: Not Active - Tool Stopped"
+                self.key_presser.stop_pressing()  # Instead of pausing, stop the tool
             else:
                 status = "Diablo IV Window Status: Not Active - Tool Stopped"
         self.update_status_label(status, "d4_status")
 
     def update_hp(self):
-        if self.hp_monitor.should_monitor.is_set() and not self.hp_monitor.is_paused.is_set():
+        if self.hp_monitor.should_monitor.is_set():
             hp_percentage = self.hp_monitor.get_hp_percentage()
             if hp_percentage is not None:
                 status = f"Current HP: {hp_percentage:.2f}%"
@@ -533,8 +505,6 @@ class GUI:
                     self.hp_history.pop(0)
             else:
                 status = "Current HP: Unable to calculate"
-        elif self.hp_monitor.is_paused.is_set():
-            status = "Current HP: Paused"
         else:
             status = "Current HP: Monitoring Disabled"
         self.update_status_label(status, "current_hp")

@@ -130,35 +130,24 @@ class KeyPresser:
         with Listener(on_press=on_press, on_release=on_release) as listener:
             listener.join()
 
-    def toggle_pause(self, pause=None):
-        if pause is not None:
-            if pause:
-                self.is_paused.set()
-                logging.info("Tool paused.")
-            else:
-                self.is_paused.clear()
-                logging.info("Tool unpaused.")
-        else:
-            if self.is_paused.is_set():
-                self.is_paused.clear()
-                logging.info("Tool unpaused.")
-            else:
-                self.is_paused.set()
-                logging.info("Tool paused.")
-        return self.is_paused.is_set()
-
-    def set_pause(self, pause):
-        if pause:
-            self.is_paused.set()
-            logging.info("Tool paused.")
-        else:
-            self.is_paused.clear()
-            logging.info("Tool unpaused.")
-        return self.is_paused.is_set()
-
     def press_hp_key(self):
         hp_key = self.config_manager.get('hp_key')
         if not hp_key:
             logging.warning("HP key is not set.")
             return
-        self.key_press_queue.append(('key', hp_key))
+
+        with self.lock:
+            # Check if there's already an HP key press in the queue
+            if any(action == ('key', hp_key) for action in self.key_press_queue):
+                logging.debug("HP key press already queued, skipping.")
+                return
+
+            # Add the HP key press to the queue
+            self.key_press_queue.append(('key', hp_key))
+
+        # Wait for the key press to be processed
+        while ('key', hp_key) in self.key_press_queue:
+            time.sleep(0.01)
+
+        # Add a cooldown period after the key press
+        time.sleep(0.5)

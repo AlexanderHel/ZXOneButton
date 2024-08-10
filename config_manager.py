@@ -10,6 +10,7 @@ class ConfigManager:
             "left_click_freq": 0.01,
             "right_click_var": False,
             "right_click_freq": 0.01,
+            "hold_right_click_var": False,
             "key_to_press_0": "",
             "key_to_press_1": "",
             "key_to_press_2": "",

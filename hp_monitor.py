@@ -72,37 +72,24 @@ class HPMonitor:
             for contour in contours:
                 x, y, w, h = cv2.boundingRect(contour)
                 if 55 <= w <= 80 and 4 <= h <= 10:
-                    valid_contours.append(contour)
-                    logging.info("Found yellow contour.")
+                    # Check if the contour contains only yellow and black pixels
+                    roi = screenshot[y:y+h, x:x+w]
+                    hsv_roi = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
+                    yellow_black_mask = cv2.bitwise_or(cv2.inRange(hsv_roi, lower_yellow, upper_yellow),
+                                                       cv2.inRange(hsv_roi, lower_black, upper_black))
+                    if np.count_nonzero(yellow_black_mask) == roi.shape[0] * roi.shape[1]:
+                        valid_contours.append(contour)
+                        logging.info("Found valid yellow-black contour.")
+                    else:
+                        logging.info("Found yellow-black contour with other colors. Ignoring.")
 
         if valid_contours:
             largest_contour = max(valid_contours, key=cv2.contourArea)
             x, y, w, h = cv2.boundingRect(largest_contour)
-
-            # Create a copy of the screenshot for visualization
-            debug_image = screenshot.copy()
-            cv2.rectangle(debug_image, (x, y), (x + w, y + h), (0, 255, 0), 2)
-            debug_image_rgb = cv2.cvtColor(debug_image, cv2.COLOR_BGR2RGB)
-
-            # Save the debug image
-            self.save_debug_image(debug_image_rgb)
-
             return x, y, w, h
         else:
-            logging.warning("No HP bar detected in the screenshot.")
-            self.save_debug_image(screenshot)
+            logging.warning("No valid HP bar detected in the screenshot.")
             return None
-
-    def save_debug_image(self, image):
-        if not os.path.exists('hpbar_debug'):
-            os.makedirs('hpbar_debug')
-        
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"hpbar_debug/debug_{timestamp}.png"
-        
-        # Save using PIL to ensure correct color representation
-        Image.fromarray(image).save(filename)
-        logging.info(f"Debug image saved: {filename}")
 
     def get_hp_percentage(self):
         if not self.screenshot_area:
@@ -162,13 +149,13 @@ class HPMonitor:
                     hp_percentage = (blue_pixels / (w - 2)) * 100
 
                 logging.info(f"Calculated HP percentage: {hp_percentage:.2f}%")
-                return hp_percentage
+                return hp_percentage, screenshot
 
             except Exception as e:
                 logging.error(f"Error processing HP percentage (attempt {attempt + 1}): {e}")
                 if attempt == max_retries - 1:
                     return None
-                time.sleep(0.1)
+                time.sleep(0.25)
 
     def __del__(self):
         if hasattr(self, 'sct'):
@@ -188,21 +175,34 @@ class HPMonitor:
             self.monitoring_thread.join()
         logging.info("HP monitoring stopped.")
 
+    def save_hp_bar_image(self, screenshot):
+        if not os.path.exists('hp_bar_images'):
+            os.makedirs('hp_bar_images')
+        
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"hp_bar_images/hp_bar_{timestamp}.png"
+        
+        # Save using PIL to ensure correct color representation
+        Image.fromarray(screenshot).save(filename)
+        logging.info(f"HP bar image saved: {filename}")
+
     def monitor_hp(self):
         while self.should_monitor.is_set():
             if self.is_paused.is_set():
                 time.sleep(0.1)
                 continue
 
-            hp_percentage = self.get_hp_percentage()
-            if hp_percentage is not None:
+            result = self.get_hp_percentage()
+            if result is not None:
+                hp_percentage, screenshot = result
                 logging.info(f"Current HP: {hp_percentage:.2f}%")
                 
                 hp_threshold = self.config_manager.get('hp_level', 85)
-                if 5 < hp_percentage < hp_threshold:
+                if 2 < hp_percentage < hp_threshold:
                     hp_key = self.config_manager.get('hp_key', '5')
                     logging.info(f"HP below threshold ({hp_threshold}%). Pressing HP key: {hp_key}")
                     self.key_presser.press_hp_key()
+                    self.save_hp_bar_image(screenshot)
                 elif hp_percentage == 0:
                     logging.info("HP is 0%. Skipping HP key press.")
             else:
