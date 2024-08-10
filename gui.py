@@ -345,7 +345,7 @@ class GUI:
 
             # Define the popup window
             with dpg.popup(dpg.last_item(), modal=True, tag='about_popup'):
-                dpg.add_text("Version 2.2")
+                dpg.add_text("Version 2.2.2")
                 dpg.add_text("Prompter: TruongTieuPham")
                 dpg.add_text("Code and Debug by Claude.ai and Perplexity.ai")
 
@@ -497,8 +497,9 @@ class GUI:
 
     def update_hp(self):
         if self.hp_monitor.should_monitor.is_set():
-            hp_percentage = self.hp_monitor.get_hp_percentage()
-            if hp_percentage is not None:
+            result = self.hp_monitor.get_hp_percentage()
+            if result is not None:
+                hp_percentage, screenshot = result
                 status = f"Current HP: {hp_percentage:.2f}%"
                 self.hp_history.append((time.time(), hp_percentage))
                 if len(self.hp_history) > 60:  # Keep only last 60 seconds

@@ -14,6 +14,6 @@
     "frequency_3": 0.01,
     "hp_key": "5",
     "hp_level": 85,
-    "monitor_hp": false,
+    "monitor_hp": true,
     "monitor_diablo_window": true
 }
