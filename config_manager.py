@@ -21,8 +21,10 @@ class ConfigManager:
             "frequency_3": 0.01,
             "hp_key": "",
             "hp_level": 85,
+            "hp_frequency": 0.1,
             "monitor_hp": True,
-            "monitor_diablo_window": True
+            "monitor_diablo_window": True,
+            "hold_shift_key": False
         }
         self.is_dirty = False
         self.load_config()
@@ -48,6 +50,12 @@ class ConfigManager:
             with open('config.json', 'w') as f:
                 json.dump(self.config, f, indent=4)
             self.is_dirty = False
+
+    def update_config(self, new_config):
+        self.config.update(new_config)
+        self.is_dirty = True
+        self.get.cache_clear()  # Clear the cache for the 'get' method
+        self.save_config()
 
     @lru_cache(maxsize=32)
     def get(self, key, default=None):

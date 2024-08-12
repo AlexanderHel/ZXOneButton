@@ -13,12 +13,17 @@ class HPMonitor:
     def __init__(self, config_manager, key_presser, scaling_factor):
         self.config_manager = config_manager
         self.key_presser = key_presser
-        self.scaling_factor = scaling_factor  # We're not using this directly, but keeping it for compatibility
+        self.scaling_factor = scaling_factor
         self.screenshot_area = None
         self.monitoring_thread = None
         self.should_monitor = threading.Event()
-        self.is_paused = threading.Event()
         self.sct = mss()
+
+    def update_config(self, new_config):
+        self.config_manager.update_config(new_config)
+        if self.should_monitor.is_set():
+            self.stop_monitoring()
+            self.start_monitoring()
 
     def select_screenshot_area(self):
         logging.info("Selecting screenshot area...")
@@ -188,36 +193,25 @@ class HPMonitor:
 
     def monitor_hp(self):
         while self.should_monitor.is_set():
-            if self.is_paused.is_set():
-                time.sleep(0.1)
-                continue
-
             result = self.get_hp_percentage()
             if result is not None:
                 hp_percentage, screenshot = result
                 logging.info(f"Current HP: {hp_percentage:.2f}%")
                 
                 hp_threshold = self.config_manager.get('hp_level', 85)
-                if 2 < hp_percentage < hp_threshold:
+                if 1 < hp_percentage < hp_threshold:
                     hp_key = self.config_manager.get('hp_key', '5')
+                    hp_frequency = self.config_manager.get('hp_frequency', 0.1)
                     logging.info(f"HP below threshold ({hp_threshold}%). Pressing HP key: {hp_key}")
                     self.key_presser.press_hp_key()
                     self.save_hp_bar_image(screenshot)
+                    time.sleep(hp_frequency)
                 elif hp_percentage == 0:
                     logging.info("HP is 0%. Skipping HP key press.")
             else:
                 logging.warning("Failed to get HP percentage.")
             
-            time.sleep(0.1)  # Increased sleep time to reduce CPU usage
-
-    def set_pause(self, pause):
-        if pause:
-            self.is_paused.set()
-            logging.info("HP monitoring paused.")
-        else:
-            self.is_paused.clear()
-            logging.info("HP monitoring unpaused.")
-        return self.is_paused.is_set()
+            time.sleep(0.1)
 
     def get_cursor_position(self):
         with mss() as sct:

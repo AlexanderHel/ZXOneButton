@@ -34,6 +34,7 @@ class GUI:
         self.screenshot_image = None
         self.frame_time = 1.0 / 60.0  # Target 60 FPS
         self.scaling_factor = self.get_display_scaling_factor()
+        self.config_changed = False
 
     def get_display_scaling_factor(self):
         try:
@@ -249,6 +250,16 @@ class GUI:
                     with dpg.tooltip(parent=self.hp_scale):
                         dpg.add_text("Adjust the HP threshold for potion use")
 
+            self.hp_frequency_input = dpg.add_input_float(
+                label="HP Keypress Frequency",
+                default_value=self.config_manager.get('hp_frequency', 0.1),
+                format="%.2f",
+                callback=lambda sender, app_data, user_data: self.update_hp_frequency(sender, app_data, user_data, unused=None),
+                width=-1
+            )
+            with dpg.tooltip(parent=self.hp_frequency_input):
+                dpg.add_text("Set the frequency/delay for HP key presses (in seconds)")
+
             dpg.add_separator()
             dpg.add_spacer(height=3)
 
@@ -357,7 +368,7 @@ class GUI:
 
             # Define the popup window
             with dpg.popup(dpg.last_item(), modal=True, tag='about_popup'):
-                dpg.add_text("Version 2.2.2")
+                dpg.add_text("Version 2.2.3")
                 dpg.add_text("Prompter: TruongTieuPham")
                 dpg.add_text("Code and Debug by Claude.ai and Perplexity.ai")
 
@@ -420,35 +431,49 @@ class GUI:
 
     def update_left_click_var(self, sender, app_data, user_data, unused):
         self.config_manager.set('left_click_var', dpg.get_value(self.left_click_checkbox))
+        self.config_changed = True
 
     def update_left_click_freq(self, sender, app_data, user_data, unused):
         self.config_manager.set('left_click_freq', app_data / 1000)
+        self.config_changed = True
 
     def update_right_click_var(self, sender, app_data, user_data, unused):
         self.config_manager.set('right_click_var', dpg.get_value(self.right_click_checkbox))
+        self.config_changed = True
 
     def update_right_click_freq(self, sender, app_data, user_data, unused):
         self.config_manager.set('right_click_freq', app_data / 1000)
+        self.config_changed = True
 
     def update_hold_shift_var(self, sender, app_data, user_data, unused):
-        self.config_manager.set('hold_shift_key', dpg.get_value(self.hold_shift_checkbox))
+        self.config_manager.set('hold_shift_key', bool(dpg.get_value(self.hold_shift_checkbox)))
+        self.config_changed = True
 
     def update_key_to_press(self, sender, app_data, user_data, unused):
         self.config_manager.set(f'key_to_press_{user_data}', app_data)
+        self.config_changed = True
 
     def update_frequency(self, sender, app_data, user_data, unused):
         self.config_manager.set(f'frequency_{user_data}', app_data / 1000)
+        self.config_changed = True
 
     def update_hp_key(self, sender, app_data, user_data, unused):
         lowercase_key = app_data.lower()
         self.config_manager.set('hp_key', lowercase_key)
         dpg.set_value(self.hp_key_input, lowercase_key.upper())
+        self.config_changed = True
 
     def update_hp_level(self, sender, app_data, user_data, unused):
         self.config_manager.set('hp_level', app_data)
+        self.config_changed = True
+
+    def update_hp_frequency(self, sender, app_data, user_data, unused):
+        self.config_manager.set('hp_frequency', app_data)
+        self.config_changed = True
 
     def update_monitor_hp_var(self, sender, app_data, user_data, unused):
         self.config_manager.set('monitor_hp', dpg.get_value(self.monitor_hp_checkbox))
+        self.config_changed = True
 
     def update_status_label(self, text, status_type):
         if status_type in self.status_labels:
@@ -565,6 +590,14 @@ class GUI:
         self.config_manager.config.update(config)
         self.config_manager.save_config()
         self.update_gui_from_config()
+        self.config_changed = False
+        # Update key_presser and hp_monitor
+        if self.key_presser:
+            self.key_presser.update_config(self.config_manager.config)
+        if self.hp_monitor:
+            self.hp_monitor.update_config(self.config_manager.config)
+        
+        self.log_message(f"Profile '{selected_profile}' loaded successfully", color=(0, 255, 0))
 
     def update_profile_list(self):
         if not os.path.exists(self.profiles_dir):
@@ -582,18 +615,64 @@ class GUI:
         # Update left and right click frequencies
         dpg.set_value(self.freq_input_ids[0], int(self.config_manager.get('left_click_freq') * 1000))
         dpg.set_value(self.freq_input_ids[1], int(self.config_manager.get('right_click_freq') * 1000))
-        dpg.set_value(self.hold_shift_checkbox, self.config_manager.get('hold_shift_key'))
+        dpg.set_value(self.hold_shift_checkbox, bool(self.config_manager.get('hold_shift_key')))
         
         for i in range(4):
-            dpg.set_value(self.key_input_ids[i], self.config_manager.get(f'key_to_press_{i}'))
+            key_value = self.config_manager.get(f'key_to_press_{i}')
+            dpg.set_value(self.key_input_ids[i], 'Space' if key_value == ' ' else key_value)
             dpg.set_value(self.freq_input_ids[i+2], int(self.config_manager.get(f'frequency_{i}') * 1000))
         
         # Update HP key
         dpg.set_value(self.hp_key_input, self.config_manager.get('hp_key').upper())
+        dpg.set_value(self.hp_frequency_input, self.config_manager.get('hp_frequency', 0.1))
+        
+        # Force refresh of all items
+        for item in self.key_input_ids + self.freq_input_ids + [self.left_click_checkbox, self.right_click_checkbox, self.monitor_hp_checkbox, self.hp_scale, self.hold_shift_checkbox, self.hp_key_input]:
+            dpg.set_item_callback(item, lambda sender, app_data, user_data: None)
+            dpg.set_item_callback(item, self.get_original_callback(item))
+
+    def update_key_to_press(self, sender, app_data, user_data, unused):
+        key_value = ' ' if app_data.lower() == 'space' else app_data
+        self.config_manager.set(f'key_to_press_{user_data}', key_value)
+        dpg.set_value(sender, 'Space' if key_value == ' ' else key_value)
+        self.config_changed = True
+        
+    def get_original_callback(self, item):
+        if item in self.key_input_ids:
+            return lambda sender, app_data, user_data: self.update_key_to_press(sender, app_data, self.key_input_ids.index(item), unused=None)
+        elif item in self.freq_input_ids:
+            if item == self.freq_input_ids[0]:
+                return lambda sender, app_data, user_data: self.update_left_click_freq(sender, app_data, user_data, unused=None)
+            elif item == self.freq_input_ids[1]:
+                return lambda sender, app_data, user_data: self.update_right_click_freq(sender, app_data, user_data, unused=None)
+            else:
+                return lambda sender, app_data, user_data: self.update_frequency(sender, app_data, self.freq_input_ids.index(item) - 2, unused=None)
+        elif item == self.left_click_checkbox:
+            return lambda sender, app_data, user_data: self.update_left_click_var(sender, app_data, user_data, unused=None)
+        elif item == self.right_click_checkbox:
+            return lambda sender, app_data, user_data: self.update_right_click_var(sender, app_data, user_data, unused=None)
+        elif item == self.monitor_hp_checkbox:
+            return lambda sender, app_data, user_data: self.update_monitor_hp_var(sender, app_data, user_data, unused=None)
+        elif item == self.hp_scale:
+            return lambda sender, app_data, user_data: self.update_hp_level(sender, app_data, user_data, unused=None)
+        elif item == self.hold_shift_checkbox:
+            return lambda sender, app_data, user_data: self.update_hold_shift_var(sender, app_data, user_data, unused=None)
+        elif item == self.hp_key_input:
+            return lambda sender, app_data, user_data: self.update_hp_key(sender, app_data, user_data, unused=None)
+        elif item == self.hp_frequency_input:
+            return lambda sender, app_data, user_data: self.update_hp_frequency(sender, app_data, user_data, unused=None)
+        else:
+            return lambda sender, app_data, user_data: None
 
     def reset_to_default(self, sender, app_data, user_data, unused):
         self.config_manager.reset_to_default()
         self.update_gui_from_config()
+        self.config_changed = False
+        if self.key_presser:
+            self.key_presser.update_config(self.config_manager.config)
+        if self.hp_monitor:
+            self.hp_monitor.update_config(self.config_manager.config)
+        self.log_message("Settings reset to default", color=(0, 255, 0))
 
     def create_log_window(self):
         with dpg.child_window(label="Log", height=100, width=583, parent="main_window"):

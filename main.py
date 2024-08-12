@@ -16,7 +16,7 @@ class ZXOneButton:
     def __init__(self):
         try:
             self.config_manager = ConfigManager()
-            self.key_presser = KeyPresser(self.config_manager)
+            self.key_presser = KeyPresser(self.config_manager.config, self.config_manager)
             self.scaling_factor = self.get_display_scaling_factor()
             self.hp_monitor = HPMonitor(self.config_manager, self.key_presser, self.scaling_factor)
             self.gui = GUI(self.config_manager, self.hp_monitor, self.key_presser)
