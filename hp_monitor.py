@@ -18,9 +18,11 @@ class HPMonitor:
         self.monitoring_thread = None
         self.should_monitor = threading.Event()
         self.sct = mss()
+        self.use_party_hp_bar = self.config_manager.get('use_party_hp_bar', False)
 
     def update_config(self, new_config):
         self.config_manager.update_config(new_config)
+        self.use_party_hp_bar = self.config_manager.get('use_party_hp_bar', False)
         if self.should_monitor.is_set():
             self.stop_monitoring()
             self.start_monitoring()
@@ -47,6 +49,12 @@ class HPMonitor:
             logging.error(f"Error selecting screenshot area: {e}")
 
     def detect_hp_bar(self, screenshot):
+        if self.use_party_hp_bar:
+            return self.detect_party_hp_bar(screenshot)
+        else:
+            return self.detect_regular_hp_bar(screenshot)
+
+    def detect_regular_hp_bar(self, screenshot):
         hsv = cv2.cvtColor(screenshot, cv2.COLOR_BGR2HSV)
         lower_blue = np.array([100, 30, 100])
         upper_blue = np.array([140, 255, 255])
@@ -55,7 +63,6 @@ class HPMonitor:
         upper_black = np.array([180, 255, 15])
         black_mask = cv2.inRange(hsv, lower_black, upper_black)
 
-        # Combined mask for blue and black
         combined_mask = cv2.bitwise_or(blue_mask, black_mask)
 
         contours, _ = cv2.findContours(combined_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -67,7 +74,6 @@ class HPMonitor:
                 valid_contours.append(contour)
 
         if not valid_contours:
-            # If no valid blue-black contours, check yellow-black
             lower_yellow = np.array([10, 65, 15])
             upper_yellow = np.array([50, 185, 185])
             yellow_mask = cv2.inRange(hsv, lower_yellow, upper_yellow)
@@ -77,7 +83,6 @@ class HPMonitor:
             for contour in contours:
                 x, y, w, h = cv2.boundingRect(contour)
                 if 55 <= w <= 80 and 4 <= h <= 10:
-                    # Check if the contour contains only yellow and black pixels
                     roi = screenshot[y:y+h, x:x+w]
                     hsv_roi = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
                     yellow_black_mask = cv2.bitwise_or(cv2.inRange(hsv_roi, lower_yellow, upper_yellow),
@@ -94,6 +99,33 @@ class HPMonitor:
             return x, y, w, h
         else:
             logging.warning("No valid HP bar detected in the screenshot.")
+            return None
+
+    def detect_party_hp_bar(self, screenshot):
+        hsv = cv2.cvtColor(screenshot, cv2.COLOR_BGR2HSV)
+        lower_red = np.array([0, 100, 100])
+        upper_red = np.array([10, 255, 255])
+        red_mask1 = cv2.inRange(hsv, lower_red, upper_red)
+        lower_red = np.array([160, 100, 100])
+        upper_red = np.array([179, 255, 255])
+        red_mask2 = cv2.inRange(hsv, lower_red, upper_red)
+        red_mask = cv2.bitwise_or(red_mask1, red_mask2)
+
+        contours, _ = cv2.findContours(red_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        valid_contours = []
+
+        for contour in contours:
+            x, y, w, h = cv2.boundingRect(contour)
+            aspect_ratio = w / h
+            if 10 <= w <= 200 and 2 <= h <= 20 and 5 <= aspect_ratio <= 15:
+                valid_contours.append(contour)
+
+        if valid_contours:
+            largest_contour = max(valid_contours, key=cv2.contourArea)
+            x, y, w, h = cv2.boundingRect(largest_contour)
+            return x, y, w, h
+        else:
+            logging.warning("No valid party HP bar detected in the screenshot.")
             return None
 
     def get_hp_percentage(self):
@@ -137,21 +169,30 @@ class HPMonitor:
 
                 hsv = cv2.cvtColor(hp_line, cv2.COLOR_BGR2HSV)
 
-                # Blue mask
-                lower_blue = np.array([100, 30, 100])
-                upper_blue = np.array([140, 255, 255])
-                mask = cv2.inRange(hsv, lower_blue, upper_blue)
-                blue_pixels = cv2.countNonZero(mask)
-
-                if blue_pixels == 0:
-                    # If no blue pixels, check yellow
-                    lower_yellow = np.array([10, 65, 15])
-                    upper_yellow = np.array([50, 185, 185])
-                    mask = cv2.inRange(hsv, lower_yellow, upper_yellow)
-                    yellow_pixels = cv2.countNonZero(mask)
-                    hp_percentage = (yellow_pixels / (w - 2)) * 100
+                if self.use_party_hp_bar:
+                    lower_red = np.array([0, 100, 100])
+                    upper_red = np.array([10, 255, 255])
+                    mask1 = cv2.inRange(hsv, lower_red, upper_red)
+                    lower_red = np.array([160, 100, 100])
+                    upper_red = np.array([179, 255, 255])
+                    mask2 = cv2.inRange(hsv, lower_red, upper_red)
+                    mask = cv2.bitwise_or(mask1, mask2)
+                    red_pixels = cv2.countNonZero(mask)
+                    hp_percentage = (red_pixels / w) * 100
                 else:
-                    hp_percentage = (blue_pixels / (w - 2)) * 100
+                    lower_blue = np.array([100, 30, 100])
+                    upper_blue = np.array([140, 255, 255])
+                    mask = cv2.inRange(hsv, lower_blue, upper_blue)
+                    blue_pixels = cv2.countNonZero(mask)
+
+                    if blue_pixels == 0:
+                        lower_yellow = np.array([10, 65, 15])
+                        upper_yellow = np.array([50, 185, 185])
+                        mask = cv2.inRange(hsv, lower_yellow, upper_yellow)
+                        yellow_pixels = cv2.countNonZero(mask)
+                        hp_percentage = (yellow_pixels / (w - 2)) * 100
+                    else:
+                        hp_percentage = (blue_pixels / (w - 2)) * 100
 
                 logging.info(f"Calculated HP percentage: {hp_percentage:.2f}%")
                 return hp_percentage, screenshot
@@ -187,7 +228,6 @@ class HPMonitor:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         filename = f"hp_bar_images/hp_bar_{timestamp}.png"
         
-        # Save using PIL to ensure correct color representation
         Image.fromarray(screenshot).save(filename)
         logging.info(f"HP bar image saved: {filename}")
 

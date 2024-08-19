@@ -78,8 +78,13 @@ class KeyPresser:
         self.should_press.clear()
         logging.info("Stopping all key pressing operations.")
         for thread in self.threads:
-            thread.join()
+            if thread.is_alive():
+                thread.join(timeout=0.1)  # Wait for a short time for threads to finish
         self.threads.clear()
+        self.clear_queues()
+        self.keyboard_controller.release(Key.shift)
+
+    def clear_queues(self):
         while not self.key_press_queue.empty():
             try:
                 self.key_press_queue.get_nowait()
@@ -90,14 +95,12 @@ class KeyPresser:
                 self.hp_key_press_queue.get_nowait()
             except Empty:
                 pass
-        self.keyboard_controller.release(Key.shift)
+
+    def should_continue(self):
+        return self.should_press.is_set() and not self.is_paused.is_set()
 
     def schedule_key_press(self, index):
-        while self.should_press.is_set():
-            if self.is_paused.is_set():
-                time.sleep(0.01)
-                continue
-
+        while self.should_continue():
             key = self.config_manager.get(f'key_to_press_{index}')
             if not key:
                 time.sleep(0.1)
@@ -105,14 +108,15 @@ class KeyPresser:
 
             frequency = self.config_manager.get(f'frequency_{index}')
             self.key_press_queue.put(PrioritizedItem(1, 'key', key))  # Use priority 1 for normal keys
-            time.sleep(frequency)
+            
+            # Sleep in small increments to allow for quicker stopping
+            start_time = time.perf_counter()
+            while time.perf_counter() - start_time < frequency and self.should_continue():
+                time.sleep(0.01)
 
     def schedule_mouse_click(self, button, frequency):
         next_click_time = time.perf_counter()
-        while self.should_press.is_set():
-            if self.is_paused.is_set():
-                time.sleep(0.01)
-                continue
+        while self.should_continue():
             current_time = time.perf_counter()
             if current_time >= next_click_time:
                 self.key_press_queue.put(PrioritizedItem(1, 'mouse', button))  # Use priority 1 for mouse clicks
@@ -121,11 +125,7 @@ class KeyPresser:
                 time.sleep(0.01)
 
     def process_key_press_queue(self):
-        while self.should_press.is_set():
-            if self.is_paused.is_set():
-                time.sleep(0.01)
-                continue
-
+        while self.should_continue():
             try:
                 # First, check the HP key press queue
                 try:
@@ -158,14 +158,14 @@ class KeyPresser:
 
     def handle_manual_keys(self):
         def on_press(key):
-            if not self.should_press.is_set():
+            if not self.should_continue():
                 return False
             if key not in self.manual_keys_pressed:
                 self.manual_keys_pressed.add(key)
                 self.key_press_queue.put(PrioritizedItem(1, 'manual_press', key))  # Use priority 1 for manual keys
 
         def on_release(key):
-            if not self.should_press.is_set():
+            if not self.should_continue():
                 return False
             if key in self.manual_keys_pressed:
                 self.manual_keys_pressed.remove(key)
@@ -185,10 +185,10 @@ class KeyPresser:
         time.sleep(hp_frequency)
 
     def hold_shift_key(self):
-        while self.should_press.is_set():
+        while self.should_continue():
             if self.config_manager.get('hold_shift_key'):
                 self.keyboard_controller.press(Key.shift)
-                while self.should_press.is_set() and self.config_manager.get('hold_shift_key'):
+                while self.should_continue() and self.config_manager.get('hold_shift_key'):
                     time.sleep(0.1)
                 self.keyboard_controller.release(Key.shift)
             else:

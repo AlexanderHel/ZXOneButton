@@ -35,6 +35,8 @@ class GUI:
         self.frame_time = 1.0 / 60.0  # Target 60 FPS
         self.scaling_factor = self.get_display_scaling_factor()
         self.config_changed = False
+        self.use_party_hp_bar = self.config_manager.get('use_party_hp_bar', False)
+
 
     def get_display_scaling_factor(self):
         try:
@@ -192,14 +194,14 @@ class GUI:
             raise
 
     def create_key_settings(self):
-        with dpg.child_window(label="Key Settings", width=182, height=280):
+        with dpg.child_window(label="Key Settings", width=190, height=280):
             dpg.add_text("Key Settings:", color=(255, 255, 255))
             dpg.bind_item_font(dpg.last_item(), self.header_font)
             for i in range(4):
                 with dpg.group():
                     key_input = dpg.add_input_text(label=f"Key {i+1}", default_value=self.config_manager.get(f'key_to_press_{i}'), callback=lambda sender, app_data, user_data: self.update_key_to_press(sender, app_data, user_data, unused=None), user_data=i, width=50)
                     self.key_input_ids.append(key_input)
-                    freq_input = dpg.add_input_int(label=f"Freq (ms)", default_value=int(self.config_manager.get(f'frequency_{i}') * 1000), callback=lambda sender, app_data, user_data: self.update_frequency(sender, app_data, user_data, unused=None), user_data=i, width=100, step=100)
+                    freq_input = dpg.add_input_int(label=f"Freq (ms)", default_value=int(self.config_manager.get(f'frequency_{i}') * 1000), callback=lambda sender, app_data, user_data: self.update_frequency(sender, app_data, user_data, unused=None), user_data=i, width=108, step=100)
                     self.freq_input_ids.append(freq_input)
                     with dpg.tooltip(parent=key_input):
                         dpg.add_text(f"Set the key to be auto-pressed for slot {i+1}")
@@ -208,7 +210,7 @@ class GUI:
         return True
 
     def create_hp_settings(self):
-        with dpg.child_window(label="HP Settings", width=248, height=280):
+        with dpg.child_window(label="HP Settings", width=240, height=280):
             dpg.add_text("HP Settings:", color=(255, 255, 255))
             dpg.bind_item_font(dpg.last_item(), self.header_font)
 
@@ -219,6 +221,14 @@ class GUI:
             )
             with dpg.tooltip(parent=self.monitor_hp_checkbox):
                 dpg.add_text("Enable/disable HP monitoring")
+
+            self.party_hp_bar_checkbox = dpg.add_checkbox(
+                label="Use Party HP Bar",
+                default_value=self.use_party_hp_bar,
+                callback=self.update_use_party_hp_bar
+            )
+            with dpg.tooltip(parent=self.party_hp_bar_checkbox):
+                dpg.add_text("Enable to use the party HP bar instead of the regular HP bar")
 
             with dpg.table(header_row=False, borders_innerH=False, borders_outerH=False, borders_innerV=False, borders_outerV=False):
                 dpg.add_table_column()
@@ -276,6 +286,12 @@ class GUI:
             
             # Initialize with "No Screenshot Area Selected" text
             self.update_screenshot_display(None)
+
+    def update_use_party_hp_bar(self, sender, app_data, user_data):
+        self.use_party_hp_bar = dpg.get_value(self.party_hp_bar_checkbox)
+        self.config_manager.set('use_party_hp_bar', self.use_party_hp_bar)
+        self.hp_monitor.use_party_hp_bar = self.use_party_hp_bar
+        self.config_changed = True
 
     def select_screenshot_area(self):
         self.hp_monitor.select_screenshot_area()
@@ -610,6 +626,7 @@ class GUI:
         dpg.set_value(self.left_click_checkbox, self.config_manager.get('left_click_var'))
         dpg.set_value(self.right_click_checkbox, self.config_manager.get('right_click_var'))
         dpg.set_value(self.monitor_hp_checkbox, bool(self.config_manager.get('monitor_hp')))
+        dpg.set_value(self.party_hp_bar_checkbox, self.config_manager.get('use_party_hp_bar', False))
         dpg.set_value(self.hp_scale, int(self.config_manager.get('hp_level')))
         
         # Update left and right click frequencies
@@ -653,6 +670,8 @@ class GUI:
             return lambda sender, app_data, user_data: self.update_right_click_var(sender, app_data, user_data, unused=None)
         elif item == self.monitor_hp_checkbox:
             return lambda sender, app_data, user_data: self.update_monitor_hp_var(sender, app_data, user_data, unused=None)
+        elif item == self.party_hp_bar_checkbox:
+            return lambda sender, app_data, user_data: self.update_use_party_hp_bar(sender, app_data, user_data, unused=None)
         elif item == self.hp_scale:
             return lambda sender, app_data, user_data: self.update_hp_level(sender, app_data, user_data, unused=None)
         elif item == self.hold_shift_checkbox:

@@ -24,7 +24,8 @@ class ConfigManager:
             "hp_frequency": 0.1,
             "monitor_hp": True,
             "monitor_diablo_window": True,
-            "hold_shift_key": False
+            "hold_shift_key": False,
+            "use_party_hp_bar": False
         }
         self.is_dirty = False
         self.load_config()
