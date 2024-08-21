@@ -57,11 +57,11 @@ class HPMonitor:
 
     def detect_regular_hp_bar(self, screenshot):
         hsv = cv2.cvtColor(screenshot, cv2.COLOR_BGR2HSV)
-        lower_blue = np.array([100, 30, 100])
+        lower_blue = np.array([100, 30, 50])
         upper_blue = np.array([140, 255, 255])
         blue_mask = cv2.inRange(hsv, lower_blue, upper_blue)
         lower_black = np.array([0, 0, 0])
-        upper_black = np.array([180, 255, 15])
+        upper_black = np.array([180, 255, 25])
         black_mask = cv2.inRange(hsv, lower_black, upper_black)
 
         combined_mask = cv2.bitwise_or(blue_mask, black_mask)
@@ -71,7 +71,7 @@ class HPMonitor:
 
         for contour in contours:
             x, y, w, h = cv2.boundingRect(contour)
-            if 55 <= w <= 80 and 4 <= h <= 10:
+            if 55 <= w <= 90 and 4 <= h <= 12:
                 valid_contours.append(contour)
 
         if not valid_contours:
@@ -83,7 +83,7 @@ class HPMonitor:
             contours, _ = cv2.findContours(combined_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
             for contour in contours:
                 x, y, w, h = cv2.boundingRect(contour)
-                if 55 <= w <= 80 and 4 <= h <= 10:
+                if 55 <= w <= 90 and 4 <= h <= 12:
                     roi = screenshot[y:y+h, x:x+w]
                     hsv_roi = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
                     yellow_black_mask = cv2.bitwise_or(cv2.inRange(hsv_roi, lower_yellow, upper_yellow),
