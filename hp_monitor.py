@@ -19,6 +19,7 @@ class HPMonitor:
         self.should_monitor = threading.Event()
         self.sct = mss()
         self.use_party_hp_bar = self.config_manager.get('use_party_hp_bar', False)
+        self.party_hp_bar_position = None
 
     def update_config(self, new_config):
         self.config_manager.update_config(new_config)
@@ -102,6 +103,9 @@ class HPMonitor:
             return None
 
     def detect_party_hp_bar(self, screenshot):
+        if self.party_hp_bar_position is not None:
+            return self.party_hp_bar_position
+
         hsv = cv2.cvtColor(screenshot, cv2.COLOR_BGR2HSV)
         lower_red = np.array([0, 100, 100])
         upper_red = np.array([10, 255, 255])
@@ -117,16 +121,37 @@ class HPMonitor:
         for contour in contours:
             x, y, w, h = cv2.boundingRect(contour)
             aspect_ratio = w / h
-            if 10 <= w <= 200 and 2 <= h <= 20 and 5 <= aspect_ratio <= 15:
+            if 50 <= w <= 170 and 5 <= h <= 15 and 5 <= aspect_ratio <= 15:
                 valid_contours.append(contour)
 
         if valid_contours:
             largest_contour = max(valid_contours, key=cv2.contourArea)
             x, y, w, h = cv2.boundingRect(largest_contour)
+            self.party_hp_bar_position = (x, y, w, h)
             return x, y, w, h
         else:
             logging.warning("No valid party HP bar detected in the screenshot.")
             return None
+
+    def calculate_party_hp_percentage(self, hp_bar_img):
+        h, w = hp_bar_img.shape[:2]
+        middle_line = h // 2
+        hp_line = hp_bar_img[middle_line:middle_line+1, :]
+
+        hsv = cv2.cvtColor(hp_line, cv2.COLOR_BGR2HSV)
+
+        lower_red = np.array([0, 100, 100])
+        upper_red = np.array([10, 255, 255])
+        mask1 = cv2.inRange(hsv, lower_red, upper_red)
+        lower_red = np.array([160, 100, 100])
+        upper_red = np.array([179, 255, 255])
+        mask2 = cv2.inRange(hsv, lower_red, upper_red)
+        mask = cv2.bitwise_or(mask1, mask2)
+
+        red_pixels = cv2.countNonZero(mask)
+        hp_percentage = (red_pixels / w) * 100
+
+        return hp_percentage
 
     def get_hp_percentage(self):
         if not self.screenshot_area:
@@ -164,22 +189,15 @@ class HPMonitor:
 
                 x, y, w, h = hp_bar
                 hp_bar_img = screenshot[y:y+h, x:x+w]
-                middle_line = h // 2
-                hp_line = hp_bar_img[middle_line:middle_line+1, :]
-
-                hsv = cv2.cvtColor(hp_line, cv2.COLOR_BGR2HSV)
 
                 if self.use_party_hp_bar:
-                    lower_red = np.array([0, 100, 100])
-                    upper_red = np.array([10, 255, 255])
-                    mask1 = cv2.inRange(hsv, lower_red, upper_red)
-                    lower_red = np.array([160, 100, 100])
-                    upper_red = np.array([179, 255, 255])
-                    mask2 = cv2.inRange(hsv, lower_red, upper_red)
-                    mask = cv2.bitwise_or(mask1, mask2)
-                    red_pixels = cv2.countNonZero(mask)
-                    hp_percentage = (red_pixels / w) * 100
+                    hp_percentage = self.calculate_party_hp_percentage(hp_bar_img)
                 else:
+                    middle_line = h // 2
+                    hp_line = hp_bar_img[middle_line:middle_line+1, :]
+
+                    hsv = cv2.cvtColor(hp_line, cv2.COLOR_BGR2HSV)
+
                     lower_blue = np.array([100, 30, 100])
                     upper_blue = np.array([140, 255, 255])
                     mask = cv2.inRange(hsv, lower_blue, upper_blue)
